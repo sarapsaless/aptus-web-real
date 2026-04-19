@@ -1,0 +1,19 @@
+APTUS — pasta de imagens para documentos
+=========================================
+
+Coloque AQUI um ficheiro com o nome EXACTO (um só):
+
+  • logo_aptus.png    (recomendado: fundo transparente)
+  • logo_aptus.jpg
+  • logo_aptus.jpeg
+
+Opcional (ícone da janela do programa):
+  • app.ico   ou   aptus.ico   ou   icon.ico
+
+Sem logo_aptus.* os documentos PDF com cabeçalho da clínica não podem ser gerados.
+
+Onde colocar no cliente:
+  • Mesma pasta que o APTUS.exe, dentro desta pasta "assets"
+  • Exemplo:  Desktop\APTUS\APTUS.exe  e  Desktop\APTUS\assets\logo_aptus.png
+
+Se gerar o .exe com PyInstaller COM esta pasta já preenchida, a logo pode ficar embutida no executável.
