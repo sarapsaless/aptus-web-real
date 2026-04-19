@@ -23,7 +23,7 @@ except KeyError as e:
     st.error(str(e))
     st.markdown(
         "1. Copie `.streamlit/secrets.toml.example` para `.streamlit/secrets.toml`.\n"
-        "2. Preencha `DB_URL` com a URI do Supabase (Database → URI).\n"
+        "2. Preencha **`DB_URL`** **ou** **`DB_HOST` + `DB_PASS`** (como no exemplo).\n"
         "3. Volte a correr: `streamlit run Home.py`"
     )
 except Exception as e:

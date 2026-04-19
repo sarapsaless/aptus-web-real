@@ -7,13 +7,29 @@ from datetime import datetime
 import psycopg2
 from psycopg2 import pool
 
-# --- CONFIGURACOES SUPABASE ---
-DB_HOST = "db.aybymdvowpjtpbkmdmjn.supabase.co"
-DB_NAME = "postgres"
-DB_USER = "postgres"
-DB_PASS = "Eng_bol_hulk_afo2026"
-DB_PORT = "5432"
-DB_SSLMODE = os.getenv("DB_SSLMODE", "require")
+
+def _cfg(key: str, default: str = "") -> str:
+    """Credenciais só fora do código: variável de ambiente ou secrets do Streamlit."""
+    val = os.getenv(key)
+    if val is not None and str(val).strip() != "":
+        return str(val).strip()
+    try:
+        import streamlit as st
+
+        if key in st.secrets:
+            return str(st.secrets[key]).strip()
+    except Exception:
+        pass
+    return default
+
+
+# --- Supabase / PostgreSQL (preencher em .streamlit/secrets.toml ou no painel Secrets do Streamlit Cloud) ---
+DB_HOST = _cfg("DB_HOST")
+DB_NAME = _cfg("DB_NAME", "postgres")
+DB_USER = _cfg("DB_USER", "postgres")
+DB_PASS = _cfg("DB_PASS")
+DB_PORT = _cfg("DB_PORT", "5432")
+DB_SSLMODE = _cfg("DB_SSLMODE", "require")
 DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "20"))
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))

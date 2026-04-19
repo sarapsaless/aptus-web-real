@@ -1,7 +1,34 @@
+# --- Segredos (nunca commit) ---
+.streamlit/secrets.toml
+.env
+.env.*
+
+# --- Ambiente Python ---
 .venv/
 venv/
 __pycache__/
 *.pyc
-.streamlit/secrets.toml
-.env
+
+# --- Dados locais / cópias / fila offline ---
+backups/
+offline_queue.json
 *.log
+audit_sync.log
+aptus_errors.log
+
+# --- Sistema desktop / empacotamento (não é a app web) ---
+OFAT_PAYOFICIAL.PY
+OFAT_PAYOFICIAL.py
+*.spec
+*.iss
+build_aptus.bat
+build_dist.ps1
+empacotar_entrega.ps1
+build/
+dist/
+
+# --- Pastas que não fazem parte do Streamlit mínimo ---
+ativos/
+construir/
+*saida*
+*instalador*
