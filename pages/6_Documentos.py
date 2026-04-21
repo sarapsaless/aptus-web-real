@@ -11,6 +11,14 @@ from documentos_config import (
     rotulos_medicos_unicos,
     texto_medico_select,
 )
+from documentos_guias_presets import (
+    LAB_NENHUM,
+    LABORATORIOS_PARCEIROS,
+    PACOTE_NENHUM,
+    PACOTES_EXAMES,
+    lista_opcoes_laboratorios,
+    lista_opcoes_pacotes,
+)
 from documentos_pdf import (
     gerar_acuidade_ishihara_pdf,
     gerar_acuidade_visual_pdf,
@@ -19,6 +27,18 @@ from documentos_pdf import (
     gerar_guia_exames_pdf,
     gerar_romberg_pdf,
 )
+
+
+def _aplicar_pacote_guia() -> None:
+    sel = st.session_state.get("doc_guia_pacote_sel")
+    if sel and sel != PACOTE_NENHUM and sel in PACOTES_EXAMES:
+        st.session_state.doc_guia_servicos = PACOTES_EXAMES[sel]
+
+
+def _aplicar_lab_guia() -> None:
+    sel = st.session_state.get("doc_guia_lab_sel")
+    if sel and sel != LAB_NENHUM and sel in LABORATORIOS_PARCEIROS:
+        st.session_state.doc_guia_local = LABORATORIOS_PARCEIROS[sel]
 
 _COR_DOC = {
     "decl_comp": "#1a237e",
@@ -131,8 +151,10 @@ periodo = st.radio(
 st.markdown("##### Guia de exames (pedido, serviços e local)")
 st.caption(
     "Preencha ao gerar **Guia de Exames**: nº do pedido, lista de exames/consultas e "
-    "local do laboratório parceiro (endereço e horário, se aplicável)."
+    "local do laboratório parceiro. **Pacotes** e **laboratórios** preenchem os campos "
+    "de texto abaixo (pode editar depois)."
 )
+
 g1, g2 = st.columns([1.2, 1])
 with g1:
     guia_numero_pedido = st.text_input(
@@ -146,6 +168,14 @@ with g2:
         key="doc_guia_data",
     )
 
+st.selectbox(
+    "Pacote de exames (predefinido)",
+    options=lista_opcoes_pacotes(),
+    key="doc_guia_pacote_sel",
+    on_change=_aplicar_pacote_guia,
+    help="Substitui o texto em «Serviços». Os modelos editam-se em documentos_guias_presets.py.",
+)
+
 guia_servicos = st.text_area(
     "Serviços (um por linha)",
     placeholder="Hemograma\nGlicemia\nConsulta ocupacional…",
@@ -153,10 +183,18 @@ guia_servicos = st.text_area(
     key="doc_guia_servicos",
 )
 
+st.selectbox(
+    "Laboratório parceiro",
+    options=lista_opcoes_laboratorios(),
+    key="doc_guia_lab_sel",
+    on_change=_aplicar_lab_guia,
+    help="Substitui o texto em «Local». Lista editável em documentos_guias_presets.py.",
+)
+
 guia_info_extra = st.text_area(
     "Local de realização / laboratório parceiro",
     placeholder="Nome do laboratório, endereço completo e horário de atendimento…",
-    height=88,
+    height=120,
     key="doc_guia_local",
 )
 

@@ -163,15 +163,14 @@ def _nova_pagina_base() -> _AptusPdf:
     return pdf
 
 
-# Dados institucionais para cabeçalho da guia de exames (ajuste em central se necessário)
-APTUS_GUIA_RAZAO_SOCIAL = "APTUS SERVICOS MEDICOS EIRELI"
-APTUS_GUIA_CNPJ = "13.372.818/0001-24"
-APTUS_GUIA_ENDERECO = (
-    "Avenida Jatuarana, 5316, Cohab, Porto Velho/RO - CEP 76807-626"
+# Cabeçalho da guia de exames (alinhar aos dados cadastrais da clínica)
+APTUS_GUIA_TITULO_CLINICA = "Aptus Medicina Do Trabalho / Dr. Victor Fini"
+APTUS_GUIA_LINHAS_CABECALHO: tuple[str, ...] = (
+    "CNPJ: 13.372.618/0001-24",
+    "Avenida Jatuarana, 5316 - Cohab, Porto Velho-RO | CEP 76807-526",
+    "Email: aptusclinica@hotmail.com",
+    "Telefone: (69) 3227-9015 | 98500-0015",
 )
-APTUS_GUIA_EMAIL = "aptusclinica@hotmail.com"
-APTUS_GUIA_FONES = "(69) 3227-0015 | (69) 98500-0015"
-APTUS_GUIA_TITULO_CLINICA = "Aptus Medicina do Trabalho / Dr. Victor Hugo Fini"
 
 
 def _cabecalho_guia_exames(pdf: FPDF, data_pedido: datetime) -> None:
@@ -206,12 +205,7 @@ def _cabecalho_guia_exames(pdf: FPDF, data_pedido: datetime) -> None:
     _font(pdf, "B", 10)
     pdf.multi_cell(max_w, 5, _normalizar_travessoes_pdf(APTUS_GUIA_TITULO_CLINICA), align="L")
     _font(pdf, "", 8)
-    for ln in (
-        APTUS_GUIA_RAZAO_SOCIAL,
-        f"CNPJ {APTUS_GUIA_CNPJ}",
-        APTUS_GUIA_ENDERECO,
-        f"{APTUS_GUIA_EMAIL} | {APTUS_GUIA_FONES}",
-    ):
+    for ln in APTUS_GUIA_LINHAS_CABECALHO:
         pdf.set_x(text_x)
         pdf.multi_cell(max_w, 4, _normalizar_travessoes_pdf(ln), align="L")
 
