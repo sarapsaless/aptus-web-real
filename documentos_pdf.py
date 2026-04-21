@@ -209,7 +209,7 @@ def _cabecalho_guia_exames(pdf: FPDF, data_pedido: datetime) -> None:
         pdf.set_x(text_x)
         pdf.multi_cell(max_w, 4, _normalizar_travessoes_pdf(ln), align="L")
 
-    pdf.set_y(max(logo_bottom, pdf.get_y()) + 8)
+    pdf.set_y(max(logo_bottom, pdf.get_y()) + 5)
 
 
 def _barra_pedido_escura(pdf: FPDF, texto_pedido: str) -> None:
@@ -223,11 +223,11 @@ def _barra_pedido_escura(pdf: FPDF, texto_pedido: str) -> None:
 
 
 def _barra_secao_clara(pdf: FPDF, titulo: str) -> None:
-    pdf.ln(5)
+    pdf.ln(3)
     pdf.set_fill_color(228, 228, 228)
     _font(pdf, "B", 10)
     pdf.set_x(pdf.l_margin)
-    pdf.cell(pdf.epw, 8, titulo, ln=1, align="L", fill=True)
+    pdf.cell(pdf.epw, 7, titulo, ln=1, align="L", fill=True)
     pdf.set_fill_color(255, 255, 255)
 
 
@@ -302,13 +302,13 @@ def gerar_guia_exames_pdf(
         _normalizar_travessoes_pdf(f"Pedido {pedido_txt if pedido_txt else '-'}"),
     )
 
-    pdf.ln(6)
+    pdf.ln(4)
     _font(pdf, "B", 11)
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(0, 7, f"Cliente: {nome_cli}", align="L")
 
     _barra_secao_clara(pdf, "Serviços")
-    pdf.ln(2)
+    pdf.ln(1)
     _font(pdf, "", 9)
     pdf.set_text_color(80, 80, 80)
     pdf.set_x(pdf.l_margin)
@@ -317,15 +317,15 @@ def gerar_guia_exames_pdf(
     _font(pdf, "", 11)
     for item in linhas_serv:
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 6, f"- {_normalizar_travessoes_pdf(item)}", align="L")
+        pdf.multi_cell(0, 5.5, f"- {_normalizar_travessoes_pdf(item)}", align="L")
 
     # Rótulo pedido explicitamente no modelo impresso (evitar confusão com “informações adicionais”)
     _barra_secao_clara(pdf, "LOCAL DE REALIZAÇÃO")
-    pdf.ln(3)
+    pdf.ln(2)
     _font(pdf, "", 11)
     if info_raw:
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 6, _normalizar_travessoes_pdf(info_raw), align="L")
+        pdf.multi_cell(0, 5.5, _normalizar_travessoes_pdf(info_raw), align="L")
     else:
         pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, _normalizar_travessoes_pdf("\u2014"), align="L")
