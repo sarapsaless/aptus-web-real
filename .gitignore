@@ -17,8 +17,6 @@ audit_sync.log
 aptus_errors.log
 
 # --- Sistema desktop / empacotamento (não é a app web) ---
-OFAT_PAYOFICIAL.PY
-OFAT_PAYOFICIAL.py
 *.spec
 *.iss
 build_aptus.bat

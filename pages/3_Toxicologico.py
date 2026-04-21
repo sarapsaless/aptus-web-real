@@ -3,9 +3,11 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
+from auth_basic import require_login
 from db import get_connection
 
 st.set_page_config(page_title="Toxicológico — APTUS", layout="wide")
+require_login()
 
 from toxic_config import (
     INSERT_COM_RECEPCAO_ID,

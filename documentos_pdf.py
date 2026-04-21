@@ -290,12 +290,17 @@ def gerar_guia_exames_pdf(
 
     linhas_serv = [ln.strip() for ln in serv_raw.splitlines() if ln.strip()]
     if not linhas_serv:
-        linhas_serv = ["—"]
+        # ASCII apenas: Helvetica (fallback sem DejaVu) não aceita U+2014 (travessão)
+        linhas_serv = ["Nao indicado"]
 
     pdf = _nova_pagina_base()
     _cabecalho_guia_exames(pdf, dt)
 
-    _barra_pedido_escura(pdf, f"Pedido {pedido_esc or '—'}")
+    pedido_txt = pedido_esc.strip() if pedido_esc else ""
+    _barra_pedido_escura(
+        pdf,
+        _normalizar_travessoes_pdf(f"Pedido {pedido_txt if pedido_txt else '-'}"),
+    )
 
     pdf.ln(6)
     _font(pdf, "B", 11)
@@ -314,7 +319,8 @@ def gerar_guia_exames_pdf(
         pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, f"- {_normalizar_travessoes_pdf(item)}", align="L")
 
-    _barra_secao_clara(pdf, "Informações adicionais")
+    # Rótulo pedido explicitamente no modelo impresso (evitar confusão com “informações adicionais”)
+    _barra_secao_clara(pdf, "LOCAL DE REALIZAÇÃO")
     pdf.ln(3)
     _font(pdf, "", 11)
     if info_raw:
@@ -322,7 +328,7 @@ def gerar_guia_exames_pdf(
         pdf.multi_cell(0, 6, _normalizar_travessoes_pdf(info_raw), align="L")
     else:
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 6, "—", align="L")
+        pdf.multi_cell(0, 6, _normalizar_travessoes_pdf("\u2014"), align="L")
 
     _linha_local_data(pdf, dt, cidade=cidade_data)
     _assinaturas_clinica_e_paciente(
@@ -590,6 +596,368 @@ def gerar_atestado_fisico_mental_pdf(
 
     _data_alinhada_direita(pdf, _data_extenso(dt, cidade_data))
     _bloco_assinatura_carimbo(pdf)
+
+    return _output_pdf_bytes(pdf)
+
+
+# --- ASO (modelo com caixas, alinhado ao impresso APTUS / NR-7) ---
+APTUS_ASO_ENDERECO_FONE = (
+    "Av. Jatuarana, n 5503 - Nova Floresta - Porto Velho - RO - "
+    "(69) 3227-9015 / (69) 98500-0015"
+)
+
+# Textos longos dos grupos ERGONOMICO / ACIDENTE (modelo papel)
+ASO_TEXTO_ERG_PADRAO = (
+    "Exigencias de posturas inadequadas / Movimentos repetitivos / Situacoes de estresses / "
+    "Levantamento e transportes manuais de cargas"
+)
+
+ASO_TEXTO_ACI_PADRAO = (
+    "Quedas do mesmo nivel / Quedas de nivel diferenciado / Atropelamento de corpo inteiro / "
+    "Esmagamento de corpo inteiro / Prensamento de membros (Superiores e inferiores) / "
+    "Cortes e perfuracoes / Queda de materiais diversos / Projecoes de materiais diversos"
+)
+
+ASO_TIPOS_KEYS: tuple[str, ...] = (
+    "ADMISSIONAL",
+    "PERIODICO",
+    "DEMISSIONAL",
+    "MUDANCA_DE_RISCO_OCUPACIONAL",
+    "RETORNO_AO TRABALHO",
+)
+
+
+def _aso_caixa_titulo(pdf: FPDF, titulo: str) -> None:
+    pdf.ln(2)
+    pdf.set_x(pdf.l_margin)
+    w = pdf.epw
+    pdf.set_fill_color(228, 228, 228)
+    _font(pdf, "B", 9)
+    pdf.multi_cell(w, 6, _normalizar_travessoes_pdf(titulo), align="L", fill=True)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.ln(1)
+
+
+def _aso_chk(pdf: FPDF, marcado: bool, texto: str) -> None:
+    m = "X" if marcado else " "
+    _font(pdf, "", 7)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(pdf.epw, 4, _normalizar_travessoes_pdf(f"({m}) {texto}"), align="L")
+
+
+def _aso_header_aso(pdf: FPDF) -> None:
+    """Cabeçalho ASO: exige x=l_margin e largura=epw (evita epw=0 após image/margens)."""
+    w = pdf.epw
+    if w < 10:
+        w = max(pdf.w - pdf.l_margin - pdf.r_margin, 50)
+    top = pdf.get_y()
+    if _LOGO_PATH.is_file():
+        try:
+            x_img = pdf.l_margin + (w - 34) / 2
+            pdf.image(str(_LOGO_PATH), x=x_img, y=top, w=34)
+            pdf.set_xy(pdf.l_margin, top + 22)
+        except Exception:
+            pdf.set_xy(pdf.l_margin, top + 2)
+    else:
+        pdf.set_xy(pdf.l_margin, top + 2)
+    _font(pdf, "B", 10)
+    pdf.multi_cell(w, 5, _normalizar_travessoes_pdf("APTUS MEDICINA DO TRABALHO"), align="C")
+    pdf.set_x(pdf.l_margin)
+    _font(pdf, "", 7)
+    pdf.multi_cell(
+        w,
+        4,
+        _normalizar_travessoes_pdf("Saude Ocupacional e Seguranca do Trabalho"),
+        align="C",
+    )
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(w, 4, _normalizar_travessoes_pdf(APTUS_ASO_ENDERECO_FONE), align="C")
+    pdf.ln(2)
+    pdf.set_x(pdf.l_margin)
+    pdf.set_fill_color(235, 235, 235)
+    _font(pdf, "B", 11)
+    pdf.multi_cell(
+        w,
+        7,
+        _normalizar_travessoes_pdf("ATESTADO MEDICO DE SAUDE OCUPACIONAL (ASO)"),
+        align="C",
+        fill=True,
+    )
+    pdf.set_fill_color(255, 255, 255)
+    pdf.ln(3)
+
+
+def _aso_bloco_identificacao(
+    pdf: FPDF,
+    *,
+    empresa: str,
+    cnpj: str,
+    nome: str,
+    cpf_fmt: str,
+    funcao: str,
+    idade_txt: str,
+) -> None:
+    pdf.set_draw_color(80, 80, 80)
+    pdf.set_line_width(0.2)
+    x0 = pdf.l_margin
+    w = pdf.epw
+    w2 = w / 2
+    y0 = pdf.get_y()
+    h1 = 8
+    _font(pdf, "", 7)
+    pdf.rect(x0, y0, w, h1)
+    pdf.set_xy(x0 + 1, y0 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"EMPRESA: {empresa or '-'}"), align="L")
+    pdf.set_xy(x0 + w2 + 1, y0 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"CNPJ: {cnpj or '-'}"), align="L")
+    y1 = y0 + h1
+    pdf.rect(x0, y1, w, h1)
+    pdf.set_xy(x0 + 1, y1 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"NOME: {nome or '-'}"), align="L")
+    pdf.set_xy(x0 + w2 + 1, y1 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"CPF: {cpf_fmt}"), align="L")
+    y2 = y1 + h1
+    pdf.rect(x0, y2, w, h1)
+    pdf.set_xy(x0 + 1, y2 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"FUNCAO: {funcao or '-'}"), align="L")
+    pdf.set_xy(x0 + w2 + 1, y2 + 1)
+    pdf.multi_cell(w2 - 2, 4, _normalizar_travessoes_pdf(f"IDADE: {idade_txt or '-'}"), align="L")
+    pdf.set_y(y2 + h1 + 2)
+
+
+def _aso_linha_medico(row: dict | None, extra_linha: str | None = None) -> str:
+    if not row:
+        return _normalizar_travessoes_pdf(extra_linha or "______________________________")
+    n = (row.get("nome") or "").strip()
+    crm = (row.get("crm") or "").strip()
+    uf = (row.get("uf") or "").strip()
+    base = f"Dr(a). {n}"
+    if crm and uf:
+        base += f". CRM/{uf} {crm}"
+    elif crm:
+        base += f". CRM {crm}"
+    if extra_linha and str(extra_linha).strip():
+        base += ". " + str(extra_linha).strip()
+    return _normalizar_travessoes_pdf(base)
+
+
+def gerar_aso_pdf(
+    *,
+    empresa_nome: str,
+    empresa_cnpj: str,
+    trabalhador_nome: str,
+    trabalhador_cpf_digitos: str | None,
+    funcao: str,
+    idade_txt: str,
+    tipo_aso: str,
+    marcar_ausente: bool,
+    marcar_fisico: bool,
+    texto_fisico: str,
+    marcar_quimico: bool,
+    texto_quimico: str,
+    marcar_biologico: bool,
+    texto_biologico: str,
+    marcar_ergonomico: bool,
+    texto_ergonomico: str | None,
+    marcar_acidente: bool,
+    texto_acidente: str | None,
+    data_exame_clinico_txt: str,
+    exames_complementares_txt: str,
+    observacao: str,
+    apto: bool,
+    data_conclusao: datetime | None,
+    medico_avaliador_linha: str,
+    medico_coordenador_row: dict | None,
+    medico_coordenador_extra: str | None = None,
+    cidade_data: str = "Porto Velho",
+) -> bytes:
+    """ASO ocupacional — layout em caixas semelhante ao modelo em papel."""
+
+    tipo_norm = (tipo_aso or "").strip().upper()
+    if tipo_norm not in ASO_TIPOS_KEYS:
+        tipo_norm = "PERIODICO"
+
+    cpf_fmt = _fmt_cpf_pdf(trabalhador_cpf_digitos)
+    nome_txt = _normalizar_travessoes_pdf((trabalhador_nome or "").strip())
+    emp_txt = _normalizar_travessoes_pdf((empresa_nome or "").strip())
+    cnpj_txt = _normalizar_travessoes_pdf((empresa_cnpj or "").strip())
+    func_txt = _normalizar_travessoes_pdf((funcao or "").strip())
+    idade_v = _normalizar_travessoes_pdf((idade_txt or "").strip())
+
+    pdf = _AptusPdf(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=max(_RODAPE_FIXO_MM + 8, 34))
+    _registar_fontes(pdf)
+    # Margens antes da primeira página — senão epw pode ficar inválido no cabeçalho ASO
+    pdf.set_margins(left=11, top=10, right=11)
+    pdf.add_page()
+    pdf.set_xy(pdf.l_margin, pdf.t_margin)
+
+    _aso_header_aso(pdf)
+
+    labels_tipo = (
+        ("ADMISSIONAL", "ADMISSIONAL"),
+        ("PERIODICO", "PERIODICO"),
+        ("DEMISSIONAL", "DEMISSIONAL"),
+        ("MUDANCA_DE_RISCO_OCUPACIONAL", "MUDANCA DE RISCO OCUPACIONAL"),
+        ("RETORNO_AO TRABALHO", "RETORNO AO TRABALHO"),
+    )
+    _aso_caixa_titulo(pdf, "TIPO DE EXAME")
+    for key, rot in labels_tipo:
+        _aso_chk(pdf, tipo_norm == key, rot)
+    pdf.ln(2)
+
+    _aso_bloco_identificacao(
+        pdf,
+        empresa=emp_txt,
+        cnpj=cnpj_txt,
+        nome=nome_txt,
+        cpf_fmt=cpf_fmt,
+        funcao=func_txt,
+        idade_txt=idade_v,
+    )
+
+    _aso_caixa_titulo(pdf, "PROCEDIMENTOS MEDICOS REALIZADOS:")
+
+    ew = pdf.epw
+    _font(pdf, "B", 8)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(ew, 4, _normalizar_travessoes_pdf("RISCOS:"), align="L")
+    _font(pdf, "", 7)
+    _aso_chk(pdf, marcar_ausente, "AUSENTE")
+    _aso_chk(
+        pdf,
+        marcar_fisico,
+        "FISICO: Ruido Ocupacional"
+        + (f" | {texto_fisico.strip()}" if (texto_fisico or "").strip() else ""),
+    )
+    _aso_chk(
+        pdf,
+        marcar_quimico,
+        "QUIMICO: Produtos quimicos de limpeza"
+        + (f" ({texto_quimico.strip()})" if (texto_quimico or "").strip() else ""),
+    )
+    _aso_chk(
+        pdf,
+        marcar_biologico,
+        "BIOLOGICO: Virus, Bacterias, Protozoarios, Fungos, Parasitas"
+        + (f" | {texto_biologico.strip()}" if (texto_biologico or "").strip() else ""),
+    )
+    te = (texto_ergonomico or "").strip() or ASO_TEXTO_ERG_PADRAO
+    _aso_chk(
+        pdf,
+        marcar_ergonomico,
+        f"ERGONOMICO: {te}",
+    )
+    ta = (texto_acidente or "").strip() or ASO_TEXTO_ACI_PADRAO
+    _aso_chk(
+        pdf,
+        marcar_acidente,
+        f"ACIDENTE: {ta}",
+    )
+
+    pdf.ln(2)
+    _font(pdf, "", 7)
+    dex = _normalizar_travessoes_pdf((data_exame_clinico_txt or "").strip() or "__/__/__")
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(
+        ew,
+        4,
+        _normalizar_travessoes_pdf(f"EXAME CLINICO: _________________ Data: {dex}"),
+        align="L",
+    )
+    pdf.ln(1)
+    _font(pdf, "B", 8)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(ew, 4, _normalizar_travessoes_pdf("EXAMES COMPLEMENTARES:"), align="L")
+    _font(pdf, "", 7)
+    comp_raw = (exames_complementares_txt or "").strip()
+    if not comp_raw:
+        comp_raw = "1. __________________________________ Data: __/__/__"
+    for i, ln in enumerate(comp_raw.splitlines(), start=1):
+        if not ln.strip():
+            continue
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(ew, 4, _normalizar_travessoes_pdf(ln.strip()), align="L")
+
+    pdf.ln(2)
+    _font(pdf, "B", 8)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(ew, 4, _normalizar_travessoes_pdf("OBSERVACAO:"), align="L")
+    _font(pdf, "", 7)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(
+        ew,
+        4,
+        _normalizar_travessoes_pdf((observacao or "").strip() or "-"),
+        align="L",
+    )
+
+    pdf.ln(3)
+    _font(pdf, "", 7)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(
+        ew,
+        4,
+        _normalizar_travessoes_pdf(
+            "DECLARAMOS QUE APOS INVESTIGACAO CLINICA, DE ACORDO COM A NR7 O CANDIDATO(A) "
+            "A FUNCAO ACIMA DECLARADA FOI CONSIDERADO(A):"
+        ),
+        align="J",
+    )
+    pdf.ln(2)
+    ma = "X" if apto else " "
+    mi = "X" if not apto else " "
+    _font(pdf, "B", 8)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(ew, 5, f"({ma}) APTO(A).    ({mi}) INAPTO(A).", align="L")
+    pdf.ln(5)
+
+    dt_conc = data_conclusao or datetime.now()
+    dstr = dt_conc.strftime("%d/%m/%Y")
+    coord_txt = _aso_linha_medico(medico_coordenador_row, medico_coordenador_extra)
+    aval_txt = _normalizar_travessoes_pdf((medico_avaliador_linha or "").strip() or "_________________________")
+
+    wcol = (pdf.epw - 6) / 2
+    y_sig = pdf.get_y()
+    x_left = pdf.l_margin
+    x_right = pdf.l_margin + wcol + 6
+
+    _font(pdf, "B", 7)
+    pdf.set_xy(x_left, y_sig)
+    pdf.multi_cell(wcol, 4, _normalizar_travessoes_pdf("MEDICO AVALIADOR:"), align="L")
+    _font(pdf, "", 7)
+    pdf.set_x(x_left)
+    pdf.multi_cell(wcol, 4, aval_txt, align="L")
+    pdf.set_x(x_left)
+    pdf.multi_cell(wcol, 4, _normalizar_travessoes_pdf("Recebi a 2 via do ASO em: ___/___/______"), align="L")
+    y_left_end = pdf.get_y()
+
+    _font(pdf, "B", 7)
+    pdf.set_xy(x_right, y_sig)
+    pdf.multi_cell(wcol, 4, _normalizar_travessoes_pdf(f"CONCLUSAO EM: {dstr}"), align="L")
+    _font(pdf, "", 7)
+    pdf.set_x(x_right)
+    pdf.multi_cell(wcol, 4, _normalizar_travessoes_pdf("MEDICO COORDENADOR:"), align="L")
+    pdf.set_x(x_right)
+    pdf.multi_cell(wcol, 4, coord_txt, align="L")
+    y_right_end = pdf.get_y()
+
+    y_line = max(y_left_end, y_right_end) + 4
+    pdf.set_y(y_line)
+    pdf.line(x_left, y_line, x_left + wcol, y_line)
+    pdf.line(x_right, y_line, x_right + wcol, y_line)
+    pdf.ln(3)
+    _font(pdf, "", 6)
+    pdf.set_x(x_left)
+    pdf.multi_cell(wcol, 3, _normalizar_travessoes_pdf("Carimbo / assinatura medica"), align="C")
+    pdf.set_xy(x_right, y_line + 3)
+    pdf.multi_cell(wcol, 3, _normalizar_travessoes_pdf("ASSINATURA DO EMPREGADO SUBMETIDO AO EXAME"), align="C")
+
+    pdf.set_y(max(pdf.get_y(), y_line + 12))
+    pdf.ln(6)
+    _font(pdf, "", 7)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(ew, 4, _normalizar_travessoes_pdf(f"{cidade_data}, {dstr}."), align="L")
 
     return _output_pdf_bytes(pdf)
 

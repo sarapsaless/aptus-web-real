@@ -3,9 +3,11 @@ import re
 import pandas as pd
 import streamlit as st
 
+from auth_basic import require_login
 from db import get_connection
 
 st.set_page_config(page_title="Histórico — APTUS", layout="wide")
+require_login()
 
 from historico_config import SQL_HISTORICO_RECEPCAO, SQL_HISTORICO_TOXIC
 

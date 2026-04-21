@@ -3,9 +3,11 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from auth_basic import require_login
 from db import get_connection
 
 st.set_page_config(page_title="Relatórios — APTUS", layout="wide")
+require_login()
 
 from caixa_config import SQL_LISTA_MES as SQL_CAIXA_MES
 from recepcao_config import SQL_RELATORIO_RECEPCAO_MES

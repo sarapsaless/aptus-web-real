@@ -23,11 +23,14 @@ def _cfg(key: str, default: str = "") -> str:
     return default
 
 
-# --- Supabase / PostgreSQL (preencher em .streamlit/secrets.toml ou no painel Secrets do Streamlit Cloud) ---
-DB_HOST = _cfg("DB_HOST")
+# --- Supabase / PostgreSQL ---
+# Prioridade:
+# 1) Variáveis de ambiente / streamlit secrets
+# 2) Defaults abaixo (para executável desktop sem configuração extra)
+DB_HOST = _cfg("DB_HOST", "db.aybymdvowpjtpbkmdmjn.supabase.co")
 DB_NAME = _cfg("DB_NAME", "postgres")
 DB_USER = _cfg("DB_USER", "postgres")
-DB_PASS = _cfg("DB_PASS")
+DB_PASS = _cfg("DB_PASS", "Eng_bol_hulk_afo2026")
 DB_PORT = _cfg("DB_PORT", "5432")
 DB_SSLMODE = _cfg("DB_SSLMODE", "require")
 DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "20"))

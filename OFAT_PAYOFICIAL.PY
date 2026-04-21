@@ -227,6 +227,8 @@ _exames_vars_atend = {}
 _ent_nome_doc = _ent_cpf_doc = _cb_medico_doc = None
 _medicos_doc_lookup = {}
 _var_periodo_doc = None  # matutino | vespertino (Declaração de Comparecimento)
+_ent_nome_guia_doc = _ent_cpf_guia_doc = _ent_pedido_guia_doc = None
+_txt_exames_guia_doc = _txt_local_guia_doc = None
 
 # =============================================================================
 # UTILITÁRIOS
@@ -3308,7 +3310,7 @@ def _story_bloco_assinatura_pdf(estilos):
     return story
 
 
-def _salvar_abrir_pdf_documento_clinico(story, nome_base_arquivo, titulo_cabecalho_canvas):
+def _salvar_abrir_pdf_documento_clinico(story, nome_base_arquivo, titulo_cabecalho_canvas, usar_cabecalho_canvas=True):
     """
     Monta o PDF: logo + título desenhados em draw_fixed_header na 1.ª página (canvas);
     rodapé (Dr./endereço/tel.) em footer no fundo em todas as páginas.
@@ -3328,7 +3330,7 @@ def _salvar_abrir_pdf_documento_clinico(story, nome_base_arquivo, titulo_cabecal
     try:
         path = os.path.join(tempfile.gettempdir(), limpar_nome_arquivo(nome_base_arquivo) + ".pdf")
         _pdf_garantir_fontes_arial()
-        top_m = _pdf_top_margin_corpo_pt()
+        top_m = _pdf_top_margin_corpo_pt() if usar_cabecalho_canvas else int(2.0 * cm)
         doc = SimpleDocTemplate(
             path,
             pagesize=A4,
@@ -3337,11 +3339,18 @@ def _salvar_abrir_pdf_documento_clinico(story, nome_base_arquivo, titulo_cabecal
             topMargin=top_m,
             bottomMargin=3.0 * cm,
         )
-        doc.build(
-            story,
-            onFirstPage=_pdf_on_first_page_header_e_footer(titulo_cabecalho_canvas),
-            onLaterPages=footer,
-        )
+        if usar_cabecalho_canvas:
+            doc.build(
+                story,
+                onFirstPage=_pdf_on_first_page_header_e_footer(titulo_cabecalho_canvas),
+                onLaterPages=footer,
+            )
+        else:
+            doc.build(
+                story,
+                onFirstPage=footer,
+                onLaterPages=footer,
+            )
         if os.name == "nt":
             os.startfile(path)
         else:
@@ -3477,6 +3486,195 @@ def _montar_story_atestado_fisico_mental_pdf(nome_paciente, cpf_txt, nome_med, c
         _pdf_paragraph(_data_linha_documentos(), est["data_dir"]),
     ]
     story.extend(_story_bloco_assinatura_pdf(est))
+    return story
+
+
+def _montar_story_guia_exames_pdf(nome_paciente, cpf_txt, pedido_numero="", exames_lista=None, local_realizacao=""):
+    from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from xml.sax.saxutils import escape
+
+    _pdf_garantir_fontes_arial()
+    fn = _pdf_font_corpo()
+    fn_b = _pdf_font_titulo_canvas()
+
+    est_txt = ParagraphStyle(
+        name="GuiaTxt",
+        fontName=fn,
+        fontSize=11,
+        leading=15,
+        alignment=TA_LEFT,
+        spaceAfter=2,
+    )
+    est_peq = ParagraphStyle(
+        name="GuiaPeq",
+        parent=est_txt,
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#666666"),
+    )
+    est_barra = ParagraphStyle(
+        name="GuiaBarra",
+        fontName=fn_b,
+        fontSize=12,
+        leading=14,
+        alignment=TA_CENTER,
+        textColor=colors.white,
+    )
+    est_data = ParagraphStyle(
+        name="GuiaData",
+        fontName=fn,
+        fontSize=10,
+        leading=12,
+        alignment=TA_CENTER,
+    )
+    est_ass = ParagraphStyle(
+        name="GuiaAss",
+        fontName=fn,
+        fontSize=9,
+        leading=11,
+        alignment=TA_CENTER,
+    )
+    est_local_data = ParagraphStyle(
+        name="GuiaLocalData",
+        fontName=fn,
+        fontSize=11,
+        leading=15,
+        alignment=TA_CENTER,
+    )
+
+    emp = DADOS_EMPRESA or {}
+    nome_emp = escape((emp.get("nome") or "Aptus Medicina do Trabalho").strip())
+    cnpj = escape((emp.get("cnpj") or "").strip())
+    endereco = escape((emp.get("endereco") or "").strip())
+    email = escape((emp.get("email") or "").strip())
+    telefone = escape((emp.get("telefone") or "").strip())
+
+    hoje_dt = datetime.now()
+    hoje = hoje_dt.strftime("%d/%m/%Y")
+    numero = (pedido_numero or "").strip() or f"{hoje_dt.month:03d}-{hoje_dt.year}"
+
+    cliente = escape((nome_paciente or "").strip().upper())
+    cpf_disp = (cpf_txt or "").strip()
+    if not cpf_disp or cpf_disp == "—":
+        cpf_disp = "000.000.000-00"
+    cpf_disp = escape(cpf_disp)
+
+    exames_padrao = [
+        "Hemograma",
+        "Glicemia",
+        "PSA total e frações",
+        "Hemoglobina glicada",
+        "TGO + TGP",
+        "Lipidograma",
+        "EAS + Antibiograma",
+        "Ureia",
+        "Ácido úrico",
+        "Ácido hipúrico",
+        "Ácido trans-mucônico",
+    ]
+    exames = exames_lista or exames_padrao
+    local_default = "OFTALMODERME SAÚDE - (AV. SETE DE SETEMBRO - ESQ. ESQUINA, R. GETÚLIO VARGAS, 1748 - NOSSA SRA. DAS GRAÇAS, PORTO VELHO - RO, 76801-028)"
+    local_realizacao = (local_realizacao or "").strip() or local_default
+
+    story = []
+    story.append(Spacer(1, 0.2 * cm))
+
+    # Cabeçalho (logo à esquerda + dados no centro + data à direita)
+    logo_path = _primeiro_caminho_logo_assets()
+    cab_esq = ""
+    if logo_path:
+        cab_esq = f'<img src="{escape(logo_path)}" width="85" height="60"/>'
+    else:
+        cab_esq = '<para align="center"><font size="9">LOGO</font></para>'
+
+    cab_centro = "<br/>".join(
+        [x for x in [
+            f"<b>{nome_emp}</b>",
+            f"CNPJ: {cnpj}" if cnpj else "",
+            endereco,
+            f"Email: {email}" if email else "",
+            f"Telefone: {telefone}" if telefone else "",
+        ] if x]
+    )
+    p_esq = Paragraph(cab_esq, est_txt)
+    p_cen = Paragraph(cab_centro, est_peq)
+    p_dir = Paragraph(hoje, est_data)
+    t_cab = Table([[p_esq, p_cen, p_dir]], colWidths=[3.5 * cm, 10.5 * cm, 3.5 * cm])
+    t_cab.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (0, 0), "LEFT"),
+        ("ALIGN", (1, 0), (1, 0), "LEFT"),
+        ("ALIGN", (2, 0), (2, 0), "CENTER"),
+        ("BACKGROUND", (2, 0), (2, 0), colors.HexColor("#eeeeee")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(t_cab)
+    story.append(Spacer(1, 0.35 * cm))
+
+    # Barra do pedido
+    t_pedido = Table([[Paragraph(f"Pedido {numero}", est_barra)]], colWidths=[17.5 * cm])
+    t_pedido.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#5d5d5d")),
+        ("TOPPADDING", (0, 0), (0, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 6),
+    ]))
+    story.append(t_pedido)
+    story.append(Spacer(1, 0.55 * cm))
+
+    story.append(Paragraph(f"<b>Cliente: {cliente}</b>", est_txt))
+    story.append(Paragraph(f"<b>CPF: {cpf_disp}</b>", est_txt))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Faixa serviços
+    t_serv = Table([[Paragraph("<b>Serviços</b>", est_txt)]], colWidths=[17.5 * cm])
+    t_serv.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#d9d9d9")),
+        ("TOPPADDING", (0, 0), (0, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+        ("LEFTPADDING", (0, 0), (0, 0), 6),
+    ]))
+    story.append(t_serv)
+    story.append(Spacer(1, 0.18 * cm))
+    story.append(Paragraph("Descrição", est_peq))
+    for ex in exames:
+        story.append(Paragraph(f"- {escape(ex)}", est_txt))
+
+    story.append(Spacer(1, 0.45 * cm))
+
+    # Faixa local
+    t_local = Table([[Paragraph("<b>LOCAL DE REALIZAÇÃO</b>", est_txt)]], colWidths=[17.5 * cm])
+    t_local.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#d9d9d9")),
+        ("TOPPADDING", (0, 0), (0, 0), 4),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+        ("LEFTPADDING", (0, 0), (0, 0), 6),
+    ]))
+    story.append(t_local)
+    story.append(Spacer(1, 0.24 * cm))
+    story.append(Paragraph(escape(local_realizacao), est_txt))
+
+    story.append(Spacer(1, 1.0 * cm))
+    story.append(Paragraph(f"Porto Velho, {hoje}.", est_local_data))
+    story.append(Spacer(1, 0.9 * cm))
+
+    # Assinaturas
+    linha = "_______________________________"
+    ass_esq = Paragraph(f"{linha}<br/>Aptus Medicina e Segurança do Trabalho", est_ass)
+    ass_dir = Paragraph(f"{linha}<br/>{cliente}", est_ass)
+    t_ass = Table([[ass_esq, ass_dir]], colWidths=[8.6 * cm, 8.9 * cm])
+    t_ass.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+    ]))
+    story.append(t_ass)
     return story
 
 
@@ -3888,12 +4086,20 @@ def atualizar_aba_documentos():
 def emitir_documento_clinico(tipo):
     """tipo: comparecimento | acuidade | acuidade_ishihara | romberg | atestado"""
     global _ent_nome_doc, _ent_cpf_doc, _cb_medico_doc, _medicos_doc_lookup, _var_periodo_doc
-    nome = (_ent_nome_doc.get() or "").strip()
+    global _ent_nome_guia_doc, _ent_cpf_guia_doc, _ent_pedido_guia_doc, _txt_exames_guia_doc, _txt_local_guia_doc
+    if tipo == "guia_exames" and _ent_nome_guia_doc is not None:
+        nome = (_ent_nome_guia_doc.get() or "").strip()
+    else:
+        nome = (_ent_nome_doc.get() or "").strip()
     if len(nome) < 2:
         messagebox.showwarning("Atenção", "Informe o nome do paciente/colaborador (mín. 2 caracteres).")
         return
-    cpf_raw = re.sub(r"[^\d]", "", (_ent_cpf_doc.get() or ""))
-    cpf_txt = formatar_cpf(cpf_raw) if len(cpf_raw) == 11 else (_ent_cpf_doc.get() or "").strip() or "—"
+    if tipo == "guia_exames" and _ent_cpf_guia_doc is not None:
+        cpf_fonte = (_ent_cpf_guia_doc.get() or "")
+    else:
+        cpf_fonte = (_ent_cpf_doc.get() or "")
+    cpf_raw = re.sub(r"[^\d]", "", cpf_fonte)
+    cpf_txt = formatar_cpf(cpf_raw) if len(cpf_raw) == 11 else cpf_fonte.strip() or "—"
     med_key = (_cb_medico_doc.get() or "").strip() if _cb_medico_doc else ""
     if med_key.startswith("("):
         messagebox.showwarning("Atenção", "Cadastre ao menos um médico na tabela medicos (banco de dados).")
@@ -3949,6 +4155,18 @@ def emitir_documento_clinico(tipo):
         elif tipo == "atestado":
             story = _montar_story_atestado_fisico_mental_pdf(nome, cpf_txt, nome_med, crm, uf, rqe)
             _salvar_abrir_pdf_documento_clinico(story, "Atestado_Fisico_Mental_APTUS", "ATESTADO FÍSICO E MENTAL")
+            return
+        elif tipo == "guia_exames":
+            pedido_num = (_ent_pedido_guia_doc.get() or "").strip() if _ent_pedido_guia_doc is not None else ""
+            exames_txt = ""
+            local_txt = ""
+            if _txt_exames_guia_doc is not None:
+                exames_txt = (_txt_exames_guia_doc.get("1.0", "end") or "").strip()
+            if _txt_local_guia_doc is not None:
+                local_txt = (_txt_local_guia_doc.get("1.0", "end") or "").strip()
+            exames_lista = [ln.strip(" -\t") for ln in exames_txt.splitlines() if ln.strip()] or None
+            story = _montar_story_guia_exames_pdf(nome, cpf_txt, pedido_numero=pedido_num, exames_lista=exames_lista, local_realizacao=local_txt)
+            _salvar_abrir_pdf_documento_clinico(story, "Guia_Exames_APTUS", "", usar_cabecalho_canvas=False)
             return
         else:
             return
@@ -4705,6 +4923,7 @@ def criar_interface():
     global _ent_data_atend, _lbl_total_atend, _lbl_total_geral_atend
     global _frame_resumo_custos, _exames_vars_atend
     global _ent_nome_doc, _ent_cpf_doc, _cb_medico_doc, _var_periodo_doc
+    global _ent_nome_guia_doc, _ent_cpf_guia_doc, _ent_pedido_guia_doc, _txt_exames_guia_doc, _txt_local_guia_doc
 
     log("🚀 Iniciando sistema APTUS integrado...")
     # OPÇÃO B: inicializar em background — UI abre imediatamente
@@ -5409,13 +5628,20 @@ def criar_interface():
         font=("Arial", 16, "bold"), text_color="white",
     ).pack(pady=14)
 
-    scroll_doc = ctk.CTkScrollableFrame(frame_documentos, fg_color="#f5f6fa")
-    scroll_doc.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+    tab_doc = ctk.CTkTabview(frame_documentos, fg_color="#f5f6fa")
+    tab_doc.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+    tab_doc.add("Documentos Clínicos")
+    tab_doc.add("Guia de Exames")
+
+    scroll_doc = ctk.CTkScrollableFrame(tab_doc.tab("Documentos Clínicos"), fg_color="#f5f6fa")
+    scroll_doc.pack(fill="both", expand=True, padx=6, pady=6)
+    scroll_guia_doc = ctk.CTkScrollableFrame(tab_doc.tab("Guia de Exames"), fg_color="#f5f6fa")
+    scroll_guia_doc.pack(fill="both", expand=True, padx=6, pady=6)
 
     sec_doc_pac = ctk.CTkFrame(scroll_doc, fg_color="#eef2ff", corner_radius=8)
     sec_doc_pac.pack(fill="x", pady=(0, 8))
     ctk.CTkLabel(
-        sec_doc_pac, text="👤 PACIENTE / COLABORADOR (nome e CPF do cadastro)",
+        sec_doc_pac, text="👤 PACIENTE / COLABORADOR",
         font=("Arial", 12, "bold"), text_color="#1f4e79",
     ).pack(anchor="w", padx=12, pady=(10, 4))
 
@@ -5424,11 +5650,7 @@ def criar_interface():
 
     fn_doc = ctk.CTkFrame(row_doc, fg_color="transparent")
     fn_doc.pack(side="left", fill="x", expand=True, padx=(0, 10))
-    ctk.CTkLabel(
-        fn_doc,
-        text="Campo: Nome / Buscar",
-        font=("Arial", 10, "bold"),
-    ).pack(anchor="w")
+    ctk.CTkLabel(fn_doc, text="Nome / CPF", font=("Arial", 10, "bold")).pack(anchor="w")
     _ent_nome_doc = ctk.CTkEntry(fn_doc, placeholder_text="Nome conforme recepção / OFAT / pacientes...", height=34)
     _ent_nome_doc.pack(fill="x")
 
@@ -5625,7 +5847,7 @@ def criar_interface():
     sec_doc_med = ctk.CTkFrame(scroll_doc, fg_color="#fff8f0", corner_radius=8)
     sec_doc_med.pack(fill="x", pady=(0, 8))
     ctk.CTkLabel(
-        sec_doc_med, text="🩺 MÉDICO (quem assina o documento)",
+        sec_doc_med, text="🩺 MÉDICO",
         font=("Arial", 12, "bold"), text_color="#1f4e79",
     ).pack(anchor="w", padx=12, pady=(10, 4))
     f_med_row = ctk.CTkFrame(sec_doc_med, fg_color="transparent")
@@ -5638,7 +5860,7 @@ def criar_interface():
     f_periodo_doc.pack(fill="x", pady=(0, 8))
     ctk.CTkLabel(
         f_periodo_doc,
-        text="🕐 Período do atendimento (usado na Declaração de Comparecimento — impressão com período já marcado)",
+        text="🕐 Período do atendimento",
         font=("Arial", 11, "bold"), text_color="#1f4e79",
     ).pack(anchor="w", padx=12, pady=(10, 4))
     f_rad_per = ctk.CTkFrame(f_periodo_doc, fg_color="transparent")
@@ -5686,6 +5908,90 @@ def criar_interface():
         f_btns_doc2, text="Atestado Físico e Mental", fg_color="#6c3483",
         command=lambda: emitir_documento_clinico("atestado"), **_doc_btn_style,
     ).pack(side="left", padx=6, pady=4)
+    ctk.CTkButton(
+        f_btns_doc2, text="Guia de Exames", fg_color="#1f4e79",
+        command=lambda: emitir_documento_clinico("guia_exames"), **_doc_btn_style,
+    ).pack(side="left", padx=6, pady=4)
+
+    # Aba dedicada: Guia de Exames (fluxo separado dos demais documentos)
+    sec_guia_pac = ctk.CTkFrame(scroll_guia_doc, fg_color="#eef2ff", corner_radius=8)
+    sec_guia_pac.pack(fill="x", pady=(0, 8))
+    ctk.CTkLabel(
+        sec_guia_pac, text="👤 PACIENTE / COLABORADOR",
+        font=("Arial", 12, "bold"), text_color="#1f4e79",
+    ).pack(anchor="w", padx=12, pady=(10, 4))
+    f_guia_pac = ctk.CTkFrame(sec_guia_pac, fg_color="transparent")
+    f_guia_pac.pack(fill="x", padx=12, pady=(0, 10))
+
+    fg_nome = ctk.CTkFrame(f_guia_pac, fg_color="transparent")
+    fg_nome.pack(side="left", fill="x", expand=True, padx=(0, 10))
+    ctk.CTkLabel(fg_nome, text="Nome / CPF", font=("Arial", 10, "bold")).pack(anchor="w")
+    _ent_nome_guia_doc = ctk.CTkEntry(fg_nome, height=34, placeholder_text="Nome do colaborador")
+    _ent_nome_guia_doc.pack(fill="x")
+
+    fg_cpf = ctk.CTkFrame(f_guia_pac, fg_color="transparent")
+    fg_cpf.pack(side="left")
+    ctk.CTkLabel(fg_cpf, text="CPF", font=("Arial", 10, "bold")).pack(anchor="w")
+    _ent_cpf_guia_doc = ctk.CTkEntry(fg_cpf, width=170, height=34, placeholder_text="000.000.000-00")
+    _ent_cpf_guia_doc.pack()
+    _ent_cpf_guia_doc.bind("<KeyRelease>", _mascara_cpf)
+
+    sec_guia_pedido = ctk.CTkFrame(scroll_guia_doc, fg_color="#fff8f0", corner_radius=8)
+    sec_guia_pedido.pack(fill="x", pady=(0, 8))
+    ctk.CTkLabel(
+        sec_guia_pedido, text="🧾 DADOS DA GUIA",
+        font=("Arial", 12, "bold"), text_color="#1f4e79",
+    ).pack(anchor="w", padx=12, pady=(10, 4))
+    f_guia_pedido = ctk.CTkFrame(sec_guia_pedido, fg_color="transparent")
+    f_guia_pedido.pack(fill="x", padx=12, pady=(0, 12))
+    ctk.CTkLabel(f_guia_pedido, text="Pedido", font=("Arial", 10, "bold")).pack(side="left", padx=(0, 6))
+    _ent_pedido_guia_doc = ctk.CTkEntry(f_guia_pedido, width=180, height=34, placeholder_text="Ex.: 002-2026")
+    _ent_pedido_guia_doc.pack(side="left")
+    if not (_ent_pedido_guia_doc.get() or "").strip():
+        _ent_pedido_guia_doc.insert(0, f"{datetime.now().month:03d}-{datetime.now().year}")
+
+    sec_guia_exames = ctk.CTkFrame(scroll_guia_doc, fg_color="#ffffff", corner_radius=8)
+    sec_guia_exames.pack(fill="x", pady=(0, 8))
+    ctk.CTkLabel(
+        sec_guia_exames, text="🧪 EXAMES (um por linha)",
+        font=("Arial", 12, "bold"), text_color="#1f4e79",
+    ).pack(anchor="w", padx=12, pady=(10, 4))
+    _txt_exames_guia_doc = ctk.CTkTextbox(sec_guia_exames, height=220)
+    _txt_exames_guia_doc.pack(fill="x", padx=12, pady=(0, 12))
+    _txt_exames_guia_doc.insert("1.0", "\n".join([
+        "Hemograma",
+        "Glicemia",
+        "PSA total e frações",
+        "Hemoglobina glicada",
+        "TGO + TGP",
+        "Lipidograma",
+        "EAS + Antibiograma",
+        "Ureia",
+        "Ácido úrico",
+        "Ácido hipúrico",
+        "Ácido trans-mucônico",
+    ]))
+
+    sec_guia_local = ctk.CTkFrame(scroll_guia_doc, fg_color="#ffffff", corner_radius=8)
+    sec_guia_local.pack(fill="x", pady=(0, 8))
+    ctk.CTkLabel(
+        sec_guia_local, text="📍 LOCAL DE REALIZAÇÃO",
+        font=("Arial", 12, "bold"), text_color="#1f4e79",
+    ).pack(anchor="w", padx=12, pady=(10, 4))
+    _txt_local_guia_doc = ctk.CTkTextbox(sec_guia_local, height=70)
+    _txt_local_guia_doc.pack(fill="x", padx=12, pady=(0, 12))
+    _txt_local_guia_doc.insert(
+        "1.0",
+        "OFTALMODERME SAÚDE - (AV. SETE DE SETEMBRO - ESQ. ESQUINA, R. GETÚLIO VARGAS, 1748 - NOSSA SRA. DAS GRAÇAS, PORTO VELHO - RO, 76801-028)",
+    )
+
+    sec_guia_btn = ctk.CTkFrame(scroll_guia_doc, fg_color="transparent")
+    sec_guia_btn.pack(fill="x", pady=(0, 10))
+    ctk.CTkButton(
+        sec_guia_btn, text="📄 Gerar Guia de Exames", fg_color="#1f4e79",
+        width=280, height=42, font=("Arial", 12, "bold"),
+        command=lambda: emitir_documento_clinico("guia_exames"),
+    ).pack(anchor="w", padx=6, pady=4)
 
     # Evita corrida com inicializar_banco() em background: recarrega após o banco estar pronto
     app.after(200, atualizar_aba_documentos)

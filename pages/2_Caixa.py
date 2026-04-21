@@ -4,9 +4,11 @@ from decimal import Decimal, InvalidOperation
 import pandas as pd
 import streamlit as st
 
+from auth_basic import require_login
 from db import get_connection
 
 st.set_page_config(page_title="Caixa — APTUS", layout="wide")
+require_login()
 
 from caixa_config import (
     SQL_INSERT,

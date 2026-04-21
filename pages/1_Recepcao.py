@@ -4,9 +4,11 @@ from decimal import Decimal, InvalidOperation
 import pandas as pd
 import streamlit as st
 
+from auth_basic import require_login
 from db import get_connection
 
 st.set_page_config(page_title="Recepção — APTUS", layout="wide")
+require_login()
 
 from recepcao_config import (
     SQL_INSERT,
@@ -251,11 +253,6 @@ if executar_lista:
                 use_container_width=True,
                 hide_index=True,
             )
-            st.caption(
-                "**Atendimento:** verde = atendido · amarelo = toxicológico · sem cor = pendente ou outro. "
-                "Clique em **Carregar / atualizar lista** após **Atendido** para ver a cor e o texto actualizados."
-            )
-
             # —— Ações (menu tipo desktop) ——
             st.subheader("Ações sobre o registo")
             lista_df = st.session_state["recepcao_lista_df"]
@@ -514,13 +511,3 @@ if executar_lista:
             "Ajuste também **recepcao_config.py** se o esquema mudou."
         )
         st.exception(e)
-else:
-    st.caption(
-        "Marque **Carregar lista ao abrir** ou clique em **Carregar / atualizar lista** "
-        "para ir buscar dados (assim o formulário acima abre logo, mesmo com rede lenta)."
-    )
-
-with st.expander("Verificar ligação ao PostgreSQL (Supabase)", expanded=False):
-    from ligacao_ui import render_verificar_ligacao_supabase
-
-    render_verificar_ligacao_supabase(button_key="btn_check_db_recepcao")
