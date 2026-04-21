@@ -1,4 +1,6 @@
 import re
+from datetime import datetime
+
 import streamlit as st
 
 st.set_page_config(page_title="Documentos — APTUS", layout="wide")
@@ -14,6 +16,7 @@ from documentos_pdf import (
     gerar_acuidade_visual_pdf,
     gerar_atestado_fisico_mental_pdf,
     gerar_declaracao_comparecimento_pdf,
+    gerar_guia_exames_pdf,
     gerar_romberg_pdf,
 )
 
@@ -23,6 +26,7 @@ _COR_DOC = {
     "acuidade_ishi": "#00838f",
     "romberg": "#2e7d32",
     "atestado": "#6a1b9a",
+    "guia_exames": "#01579b",
 }
 
 _DOC_TITLES = (
@@ -31,6 +35,7 @@ _DOC_TITLES = (
     ("Acuidade + Ishihara", "acuidade_ishi"),
     ("Teste de Romberg", "romberg"),
     ("Atestado Físico e Mental", "atestado"),
+    ("Guia de Exames", "guia_exames"),
 )
 
 
@@ -123,9 +128,41 @@ periodo = st.radio(
     label_visibility="collapsed",
 )
 
+st.markdown("##### Guia de exames (pedido, serviços e local)")
+st.caption(
+    "Preencha ao gerar **Guia de Exames**: nº do pedido, lista de exames/consultas e "
+    "local do laboratório parceiro (endereço e horário, se aplicável)."
+)
+g1, g2 = st.columns([1.2, 1])
+with g1:
+    guia_numero_pedido = st.text_input(
+        "Nº do pedido",
+        placeholder="Ex.: 596-2026",
+        key="doc_guia_pedido",
+    )
+with g2:
+    guia_data_pedido = st.date_input(
+        "Data do pedido",
+        key="doc_guia_data",
+    )
+
+guia_servicos = st.text_area(
+    "Serviços (um por linha)",
+    placeholder="Hemograma\nGlicemia\nConsulta ocupacional…",
+    height=110,
+    key="doc_guia_servicos",
+)
+
+guia_info_extra = st.text_area(
+    "Local de realização / laboratório parceiro",
+    placeholder="Nome do laboratório, endereço completo e horário de atendimento…",
+    height=88,
+    key="doc_guia_local",
+)
+
 st.markdown("##### Tipo de documento")
 
-cols = st.columns(5)
+cols = st.columns(6)
 btn_hit = None
 for col, (titulo, slug) in zip(cols, _DOC_TITLES):
     hexcol = _COR_DOC[slug]
@@ -150,6 +187,16 @@ def _gerar_pdf(btn: tuple[str, str]) -> None:
 
     cpf_limpo = _digits_cpf(cpf_doc, 11) or None
     mr = medico_row_com_crm(med_row) if med_row else None
+
+    if slug == "guia_exames":
+        pedido_txt = (guia_numero_pedido or "").strip()
+        serv_txt = (guia_servicos or "").strip()
+        if not pedido_txt:
+            st.warning("Indique o **nº do pedido** para a guia de exames.")
+            return
+        if not serv_txt:
+            st.warning("Indique pelo menos um **serviço / exame** (um por linha).")
+            return
 
     try:
         if slug == "decl_comp":
@@ -181,6 +228,16 @@ def _gerar_pdf(btn: tuple[str, str]) -> None:
                 paciente_nome=nome,
                 paciente_cpf_digitos=cpf_limpo,
                 medico_row=mr,
+            )
+        elif slug == "guia_exames":
+            d = guia_data_pedido
+            data_ped = datetime(d.year, d.month, d.day) if d is not None else None
+            pdf_bytes = gerar_guia_exames_pdf(
+                paciente_nome=nome,
+                numero_pedido=pedido_txt,
+                servicos_texto=serv_txt,
+                informacoes_adicionais=(guia_info_extra or "").strip(),
+                data_pedido=data_ped,
             )
         else:
             st.error("Tipo de documento desconhecido.")

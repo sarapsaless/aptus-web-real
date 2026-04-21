@@ -163,6 +163,183 @@ def _nova_pagina_base() -> _AptusPdf:
     return pdf
 
 
+# Dados institucionais para cabeçalho da guia de exames (ajuste em central se necessário)
+APTUS_GUIA_RAZAO_SOCIAL = "APTUS SERVICOS MEDICOS EIRELI"
+APTUS_GUIA_CNPJ = "13.372.818/0001-24"
+APTUS_GUIA_ENDERECO = (
+    "Avenida Jatuarana, 5316, Cohab, Porto Velho/RO - CEP 76807-626"
+)
+APTUS_GUIA_EMAIL = "aptusclinica@hotmail.com"
+APTUS_GUIA_FONES = "(69) 3227-0015 | (69) 98500-0015"
+APTUS_GUIA_TITULO_CLINICA = "Aptus Medicina do Trabalho / Dr. Victor Hugo Fini"
+
+
+def _cabecalho_guia_exames(pdf: FPDF, data_pedido: datetime) -> None:
+    """Cabeçalho: logo à esquerda, dados da clínica ao lado, data no canto superior direito."""
+    top_y = max(12.0, pdf.get_y())
+    pdf.set_y(top_y)
+    left_x = pdf.l_margin
+    logo_w = 38.0
+    logo_bottom = top_y + 26.0
+    if _LOGO_PATH.is_file():
+        try:
+            pdf.image(str(_LOGO_PATH), x=left_x, y=top_y, w=logo_w)
+            logo_bottom = top_y + 26.0
+        except Exception:
+            pass
+
+    box_w = 34.0
+    box_h = 9.0
+    date_x = pdf.w - pdf.r_margin - box_w
+    data_str = data_pedido.strftime("%d/%m/%Y")
+    pdf.set_fill_color(238, 238, 238)
+    pdf.rect(date_x, top_y, box_w, box_h, "F")
+    _font(pdf, "", 9)
+    pdf.set_text_color(55, 55, 55)
+    pdf.set_xy(date_x, top_y + 2)
+    pdf.cell(box_w, 5, data_str, align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    text_x = left_x + logo_w + 6
+    max_w = date_x - text_x - 4
+    pdf.set_xy(text_x, top_y)
+    _font(pdf, "B", 10)
+    pdf.multi_cell(max_w, 5, _normalizar_travessoes_pdf(APTUS_GUIA_TITULO_CLINICA), align="L")
+    _font(pdf, "", 8)
+    for ln in (
+        APTUS_GUIA_RAZAO_SOCIAL,
+        f"CNPJ {APTUS_GUIA_CNPJ}",
+        APTUS_GUIA_ENDERECO,
+        f"{APTUS_GUIA_EMAIL} | {APTUS_GUIA_FONES}",
+    ):
+        pdf.set_x(text_x)
+        pdf.multi_cell(max_w, 4, _normalizar_travessoes_pdf(ln), align="L")
+
+    pdf.set_y(max(logo_bottom, pdf.get_y()) + 8)
+
+
+def _barra_pedido_escura(pdf: FPDF, texto_pedido: str) -> None:
+    pdf.set_fill_color(88, 88, 88)
+    pdf.set_text_color(255, 255, 255)
+    _font(pdf, "B", 11)
+    pdf.set_x(pdf.l_margin)
+    pdf.cell(pdf.epw, 9, texto_pedido, ln=1, align="C", fill=True)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_fill_color(255, 255, 255)
+
+
+def _barra_secao_clara(pdf: FPDF, titulo: str) -> None:
+    pdf.ln(5)
+    pdf.set_fill_color(228, 228, 228)
+    _font(pdf, "B", 10)
+    pdf.set_x(pdf.l_margin)
+    pdf.cell(pdf.epw, 8, titulo, ln=1, align="L", fill=True)
+    pdf.set_fill_color(255, 255, 255)
+
+
+def _linha_local_data(pdf: FPDF, dt: datetime, cidade: str = "Porto Velho") -> None:
+    pdf.ln(10)
+    _font(pdf, "", 11)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(
+        0,
+        7,
+        _normalizar_travessoes_pdf(f"{cidade}, {dt.strftime('%d/%m/%Y')}."),
+        align="C",
+    )
+
+
+def _assinaturas_clinica_e_paciente(
+    pdf: FPDF,
+    *,
+    nome_institucional_assinatura: str,
+    nome_paciente: str,
+) -> None:
+    """Duas linhas de assinatura: clínica (esquerda) e paciente (direita)."""
+    pdf.ln(8)
+    gap = 6.0
+    w_each = (pdf.epw - gap) / 2
+    x_left = pdf.l_margin
+    x_right = pdf.l_margin + w_each + gap
+    y_line = pdf.get_y()
+    pdf.line(x_left, y_line, x_left + w_each, y_line)
+    pdf.line(x_right, y_line, x_right + w_each, y_line)
+    y_txt = y_line + 3
+    paciente_esc = _normalizar_travessoes_pdf((nome_paciente or "").strip())
+    clinica_esc = _normalizar_travessoes_pdf((nome_institucional_assinatura or "").strip())
+    _font(pdf, "", 9)
+    pdf.set_xy(x_left, y_txt)
+    pdf.multi_cell(w_each, 4, clinica_esc, align="C")
+    y_end = pdf.get_y()
+    pdf.set_xy(x_right, y_txt)
+    pdf.multi_cell(w_each, 4, paciente_esc, align="C")
+    pdf.set_y(max(y_end, pdf.get_y()) + 4)
+
+
+def gerar_guia_exames_pdf(
+    *,
+    paciente_nome: str,
+    numero_pedido: str,
+    servicos_texto: str,
+    informacoes_adicionais: str,
+    data_pedido: datetime | None = None,
+    cidade_data: str = "Porto Velho",
+    nome_institucional_assinatura: str = "Aptus Medicina e Segurança do Trabalho",
+) -> bytes:
+    """Guia de exames — modelo com cabeçalho institucional, pedido, serviços e local."""
+
+    dt = data_pedido or datetime.now()
+    nome_cli = html.escape((paciente_nome or "").strip())
+    pedido_esc = html.escape((numero_pedido or "").strip())
+    serv_raw = (servicos_texto or "").strip()
+    info_raw = (informacoes_adicionais or "").strip()
+
+    linhas_serv = [ln.strip() for ln in serv_raw.splitlines() if ln.strip()]
+    if not linhas_serv:
+        linhas_serv = ["—"]
+
+    pdf = _nova_pagina_base()
+    _cabecalho_guia_exames(pdf, dt)
+
+    _barra_pedido_escura(pdf, f"Pedido {pedido_esc or '—'}")
+
+    pdf.ln(6)
+    _font(pdf, "B", 11)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, 7, f"Cliente: {nome_cli}", align="L")
+
+    _barra_secao_clara(pdf, "Serviços")
+    pdf.ln(2)
+    _font(pdf, "", 9)
+    pdf.set_text_color(80, 80, 80)
+    pdf.set_x(pdf.l_margin)
+    pdf.cell(0, 5, "Descrição", ln=1)
+    pdf.set_text_color(0, 0, 0)
+    _font(pdf, "", 11)
+    for item in linhas_serv:
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 6, f"- {_normalizar_travessoes_pdf(item)}", align="L")
+
+    _barra_secao_clara(pdf, "Informações adicionais")
+    pdf.ln(3)
+    _font(pdf, "", 11)
+    if info_raw:
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 6, _normalizar_travessoes_pdf(info_raw), align="L")
+    else:
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 6, "—", align="L")
+
+    _linha_local_data(pdf, dt, cidade=cidade_data)
+    _assinaturas_clinica_e_paciente(
+        pdf,
+        nome_institucional_assinatura=nome_institucional_assinatura,
+        nome_paciente=(paciente_nome or "").strip(),
+    )
+
+    return _output_pdf_bytes(pdf)
+
+
 def _cabecalho_logo_ou_texto(pdf: FPDF) -> None:
     # Sobe o logo/cabeçalho ~8 mm (~2 linhas em relação ao início da área útil)
     pdf.set_y(max(10.0, pdf.get_y() - 8))
